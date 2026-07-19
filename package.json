@@ -1,0 +1,12 @@
+{
+  "name": "@webrix/willow-plugins",
+  "version": "1.0.0",
+  "description": "Willow agent plugins for Cursor and Claude Code",
+  "private": true,
+  "type": "module",
+  "author": {
+    "name": "Webrix",
+    "url": "https://webrix.ai"
+  },
+  "license": "MIT"
+}

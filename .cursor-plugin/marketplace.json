@@ -1,0 +1,17 @@
+{
+  "name": "willow-plugins",
+  "owner": {
+    "name": "Webrix",
+    "email": "plugins@webrix.ai"
+  },
+  "metadata": {
+    "description": "Willow agent plugins: diagnostics and tooling for the willow CLI"
+  },
+  "plugins": [
+    {
+      "name": "willow-diagnose-plugin",
+      "source": "willow-diagnose-plugin",
+      "description": "Diagnose and fix willow CLI issues (daemon request timeout, auth, gateway reachability)."
+    }
+  ]
+}
