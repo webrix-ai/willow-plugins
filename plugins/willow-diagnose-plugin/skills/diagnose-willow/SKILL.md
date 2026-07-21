@@ -4,15 +4,20 @@ description: >-
   Diagnose and fix willow CLI failures — including "Daemon request timeout"
   ("Warning: Failed to connect to server: Daemon request timeout" and
   "<error: Daemon request timeout>" when listing or grepping tools), auth
-  failures, and gateway reachability. Use when willow commands time out, tools
-  fail to list, or MCP calls hang from an agent such as Codex, Claude, or Cursor.
+  failures, gateway reachability, an unsupported Node.js version, and a
+  stale/cached CLI build (an old version kept alive by the npx cache). Use when
+  willow commands time out, tools fail to list, the CLI reports an old version
+  or refuses to run on your Node, or MCP calls hang from an agent such as Codex,
+  Claude, or Cursor.
 ---
 
 # Troubleshoot the willow CLI
 
-Most "willow is broken" reports fall into three buckets: a stale local **daemon**,
-**expired auth**, or a slow/unreachable **gateway**. Start with the built-in
-`willow doctor` — it inspects all three at once — then follow the fix workflow.
+Most "willow is broken" reports fall into a few buckets: a bad **environment**
+(unsupported Node.js version or a stale/cached CLI build), a stale local
+**daemon**, **expired auth**, or a slow/unreachable **gateway**. Start with the
+built-in `willow doctor` — it inspects Node, config, auth, daemon, and gateway at
+once — then follow the fix workflow.
 
 `Daemon request timeout` in particular is a **client-side** error. It is raised
 by willow when its background daemon does not answer an IPC request in time — it
@@ -51,6 +56,17 @@ Daemon files live in `/tmp/willow-$(id -u)/`:
 3. **Slow gateway tool enumeration.** Listing aggregates every integration in
    the org; if one upstream integration hangs, the whole list is slow.
 4. **Network path to the gateway** (VPN / proxy / DNS) is blocked or slow.
+5. **Unsupported Node.js version.** willow requires **Node >= 18**. On older
+   Node the CLI can crash with syntax errors, `fetch is not defined`, or exit
+   before it ever reaches the gateway. Fix: install/switch to Node >= 18.
+6. **Stale / cached CLI build.** Agents usually launch willow through
+   `npx @willowai/cli`, and npx caches the package — so it can keep running an
+   old version even after a global update, missing bug fixes for the errors
+   above. Fix: update the CLI and clear the npx cache.
+
+Causes 5 and 6 are **environment** problems: they happen before (or independent
+of) any daemon/auth/gateway logic, so check them first when the version looks
+old or the CLI won't even start. See "Environment: Node & CLI version" below.
 
 ## Fix workflow
 
@@ -71,7 +87,41 @@ willow doctor   # checks node, config, contexts, auth, daemon, MCP reachability
 ```
 
 `willow doctor` prints a checklist and exits non-zero if any check FAILs. Use
-its output to jump straight to the failing area below.
+its output to jump straight to the failing area below. If `willow doctor` flags
+the **node** row or you suspect an old build (or `willow` won't start at all),
+do "Step 0.5 — Environment" before anything else.
+
+**Step 0.5 — Environment: Node & CLI version:**
+
+Node must be **>= 18**. Check it, and check whether you're running the latest
+CLI build:
+
+```bash
+node -v                          # must be >= v18
+willow --version                 # installed CLI version
+npm view @willowai/cli version   # latest published version
+```
+
+Fix an old Node (use whatever version manager you have):
+
+```bash
+nvm install 20 && nvm use 20     # nvm
+# or: fnm use 20 / volta install node@20 / brew upgrade node
+```
+
+Fix an old CLI build — self-update, then clear the npx cache so agents that
+launch `npx @willowai/cli` stop reusing the stale copy:
+
+```bash
+willow update                    # self-update the global @willowai/cli
+npx clear-npx-cache              # drop cached npx package versions
+# fallback if the above isn't available:
+rm -rf "$(npm config get cache)/_npx"
+```
+
+If a wrapper/agent invokes the CLI via npx, pin it to the latest to bypass the
+cache entirely: `npx @willowai/cli@latest ...`. After fixing the environment,
+re-run `willow doctor` and continue below only if problems remain.
 
 **Step 1 — Kill the stale daemon (fixes most cases):**
 
@@ -134,13 +184,21 @@ Attach `willow-debug.log` and include:
 
 - Which step(s) changed the behavior (especially the Step 3 result).
 - Your org slug and the `curl` status/time from Step 4.
-- Output of `willow doctor` and `willow --version`.
+- Output of `willow doctor`, `willow --version`, and `node -v`.
+- Whether the CLI is launched directly or via `npx @willowai/cli`, and whether
+  clearing the npx cache changed anything.
 
 ## Quick reference
 
 | Command                                        | Purpose                                   |
 | ---------------------------------------------- | ----------------------------------------- |
 | `willow doctor`                                | Diagnose env, config, auth, daemon, MCP   |
+| `node -v`                                       | Check Node version (must be >= 18)        |
+| `willow --version`                              | Show installed CLI version                |
+| `npm view @willowai/cli version`               | Show latest published CLI version         |
+| `willow update`                                | Self-update to the latest CLI             |
+| `npx clear-npx-cache`                           | Clear stale npx-cached CLI builds         |
+| `npx @willowai/cli@latest ...`                  | Run the latest CLI, bypassing npx cache   |
 | `kill "$(cat /tmp/willow-$(id -u)/willow.pid)"`| Stop the background daemon                |
 | `rm -rf "/tmp/willow-$(id -u)/"`               | Clear leftover socket/PID files           |
 | `willow auth status`                           | Check login state (exit 4 = re-login)     |
