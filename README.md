@@ -1,12 +1,12 @@
 # Willow Plugins
 
-A plugin marketplace for [Willow](https://webrix.ai) that works with Claude Code and Cursor. Install plugins on demand to add diagnostics and tooling for the `willow` CLI to your coding agent.
+A plugin marketplace for [Willow](https://webrix.ai) that works with Claude Code and Cursor. Install plugins on demand to add diagnostics and triage for Willow to your coding agent: both AI clients connected over regular HTTP MCP and the `willow` CLI.
 
 ## Available plugins
 
 | Plugin | Description |
 | ------ | ----------- |
-| [`willow-diagnose-plugin`](plugins/willow-diagnose-plugin) | Diagnose and triage Willow problems — `willow` CLI issues ("Daemon request timeout", auth, gateway reachability) and known end-user issues (no tools, 401, client setup, failing tool calls). |
+| [`willow-diagnose-plugin`](plugins/willow-diagnose-plugin) | Triage Willow problems for end users — AI clients connected over HTTP MCP (no tools, 401 and sign-in, client setup, failing tool calls) and the optional `willow` CLI ("Daemon request timeout", auth, gateway reachability). |
 
 ## Install
 

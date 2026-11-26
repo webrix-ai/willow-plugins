@@ -1,14 +1,15 @@
 ---
 name: triage-willow
 description: >-
-  Entry point for triaging any "Willow isn't working" report from an end user:
-  no tools showing, 401 / Unauthorized, OAuth popup or localhost 404 problems,
-  a client that won't connect, tool calls failing or blocked, a stale tool list.
-  Classifies the symptom, collects redacted read-only evidence, checks
-  server-side state through the Willow MCP, routes to the matching
-  triage-willow-* skill, and builds a support report when the issue is not
-  resolved. Use first whenever a user says Willow, an MCP server or a tool is
-  broken and the cause is unknown.
+  Entry point for triaging any "Willow isn't working" report from an end user
+  who connects an AI client (Cursor, Claude Code, Claude Desktop, VS Code,
+  Codex, ChatGPT, ...) to Willow as a regular HTTP MCP server: no tools showing,
+  401 / Unauthorized, the Authorize step or OAuth popup failing, a URL that
+  doesn't connect, a stale tool list, tool calls failing or blocked. Classifies
+  the symptom, probes the endpoint, collects redacted read-only evidence, routes
+  to the matching triage-willow-* skill, and builds a support report when the
+  issue is not resolved. The willow CLI is optional. Use first whenever a user
+  says Willow, an MCP server or a tool is broken and the cause is unknown.
 ---
 
 # Triage a Willow problem
@@ -17,14 +18,35 @@ Goal: find which known issue the user has, fix it with the smallest safe step,
 and, if it is not a known issue, hand support a report they can act on without
 a follow-up question.
 
+Most users reach Willow the plain way: an MCP entry in their AI client pointing
+at an HTTPS URL, signed in with a browser OAuth step. That needs no `willow`
+CLI, and this skill never assumes it is installed.
+
+## How the connection works (and where it breaks)
+
+Every report maps to one rung of this ladder. Find the lowest rung that fails.
+
+| # | Step | If it fails, the user sees | Skill |
+| --- | --- | --- | --- |
+| 1 | The client has a correct entry: `https://` URL ending in the org's `/mcp`, right `type` | Tools never appear, no error. Cursor ignores an entry without `"type": "http"`. | `triage-willow-client-setup` |
+| 2 | The client can reach the URL | Connection refused, timeout, 404, or the client "connects" to a web page | `triage-willow-client-setup` |
+| 3 | The gateway answers `401` with an OAuth challenge, and the client fetches the sign-in metadata (`/.well-known/oauth-*`) | "Authorize never completes", nothing opens. **The `401` itself is normal here.** | `triage-willow-auth` |
+| 4 | The user signs in through the browser (Authorize) and the client stores the token | `Unauthorized` loops, `localhost` 404, blocked popup, expired sign-in | `triage-willow-auth` |
+| 5 | `tools/list`: Willow returns what this user may use, enabled, in scope | No tools, a missing server, a stale or too-narrow list | `triage-willow-missing-tools` |
+| 6 | `tools/call`: the user's own connection to that server, approvals and guards | A listed tool fails, is blocked or waits for approval | `triage-willow-tool-failures` |
+
+The `willow` CLI is a seventh, separate path with its own daemon:
+`Daemon request timeout` and `willow doctor` failures go to `diagnose-willow`.
+
 ## Ground rules
 
-- **Read-only first.** Observe before changing anything. Every change (kill a
-  process, edit a config file, disconnect or re-authenticate a server) needs the
-  user's go-ahead, and you say what it will do.
-- **Never print secrets.** Don't run `willow auth token`, don't `cat`
-  `~/.config/willow/auth.json` or a client config that holds headers. Use the
-  bundled evidence script, which redacts tokens, JWTs and emails.
+- **Read-only first.** Observe before changing anything. Every change (editing
+  a client config, signing out, disconnecting or re-authenticating a server,
+  restarting a process) needs the user's go-ahead, and you say what it does.
+- **Never print secrets.** Don't `cat` client configs (they can hold headers
+  and keys), token files, or CLI auth files. Use the bundled evidence script,
+  which redacts tokens, JWTs and emails and prints only each Willow entry's
+  type and URL.
 - **Ask one question at a time**, and only when the answer changes the next
   step. Most of what you need is discoverable.
 - **Access questions go to the admin.** "Why can't I see X?" or "Why don't I
@@ -33,18 +55,18 @@ a follow-up question.
 ## Step 1 — Classify the symptom
 
 Pick the row that matches the user's words. If two match, take the one higher in
-the table: an auth problem hides everything below it.
+the table: a lower rung can't work until the ones above it do.
 
 | What the user sees | Skill to use |
 | --- | --- |
-| `Unauthorized`, `401`, "authorization never finished", Authorize page loops, 404 on `localhost` after signing in, popup blocked on **Connect**, `willow auth` exit code 4, a server that needs **Re-authenticate** | `triage-willow-auth` |
-| Client config problem: Cursor ignores the entry, Claude Code shows `disconnected`, wrong or `http://` URL, client needs restart, connection refused | `triage-willow-client-setup` |
-| Connected, but "no tools", a server or tool is missing, tool names or `account` choices look old, `Unknown account "<name>"`, empty `willow tools list` | `triage-willow-missing-tools` |
+| Client config problem: entry ignored, wrong or `http://` URL, a typo, connection refused, 404, client needs restart or reconnect, Claude Code shows `disconnected` | `triage-willow-client-setup` |
+| `Unauthorized`, `401` that doesn't resolve, Authorize never completes, `localhost` 404 after signing in, popup blocked on **Connect**, a server needing **Re-authenticate** | `triage-willow-auth` |
+| Connected, but "no tools", a server or tool is missing, tool names or `account` choices look old, `Unknown account "<name>"`, only one server's tools appear | `triage-willow-missing-tools` |
 | A tool is listed but the call fails, is blocked, waits on an approval, returns a schema or permission error | `triage-willow-tool-failures` |
-| `willow` CLI itself hangs, `Daemon request timeout`, `willow doctor` FAILs | `diagnose-willow` |
+| The `willow` CLI hangs, `Daemon request timeout`, `willow doctor` FAILs | `diagnose-willow` |
 | None of the above | Continue at Step 4 and escalate |
 
-If a matching skill isn't installed, follow the same checks from the table in
+If a matching skill isn't installed, follow the same checks from
 [references/known-issues.md](references/known-issues.md).
 
 ## Step 2 — Collect evidence (read-only)
@@ -53,35 +75,38 @@ If a matching skill isn't installed, follow the same checks from the table in
 bash scripts/collect-evidence.sh
 ```
 
-It prints, with secrets redacted: OS and Node versions, `willow --version`,
-`willow auth status` (exit code), `whoami`, contexts, daemon state,
-`willow doctor`, the Willow entries of common MCP client configs (type and URL
-only), and an unauthenticated reachability probe of the gateway.
+Needs only `bash` and `curl`. Node.js and the `willow` CLI are used if present
+and skipped if not. It prints, with secrets redacted:
 
-Read it for the three facts that decide most cases:
+1. **The Willow entries in the user's client configs** (Cursor, Claude Code,
+   VS Code, Codex, Windsurf): type and URL only, with warnings for a URL that
+   isn't `https://`, has no `/mcp`, or a Cursor entry with no `type`.
+2. **An endpoint probe of each of those URLs**, exactly as a client sees it
+   before sign-in, and a check of the sign-in discovery endpoints.
+3. The CLI's version, sign-in state and `willow doctor`, only if it's installed.
 
-1. **Is the gateway reachable?** A `401` from the probe is *good* here: the
-   gateway answered and wants a token. `000`, a timeout or a TLS error means a
-   network, VPN, proxy or DNS problem.
-2. **Is the user signed in?** `auth status` exit 0 = yes, 4 = no.
-3. **Does the client point at the right place?** URL uses `https://`, the right
-   org host, and contains `/mcp`. A scope (`?mcp=<server>`, `?toolkit=<name>`,
-   `/mcp/mcp/<server>`, `/mcp/toolkit/<name>`) limits the client to that one
-   server or toolkit.
+Read the probe like this:
+
+| Probe result | Meaning |
+| --- | --- |
+| `401` with a challenge | A Willow gateway answered; the client should begin sign-in. **Normal.** It does *not* prove the org host or server name is right: a wrong org also answers `401`. |
+| `200` + a web page | The URL is the Willow **portal**, not the MCP endpoint: `/mcp` is missing. |
+| `404` | Path typo. |
+| Redirect (`301`...) | Often `http://` → `https://`. A client may drop the POST on a redirect; use the final URL. |
+| `000` / timeout / TLS error | DNS, network, VPN, proxy or certificate problem on this machine. |
+| `403`, `429`, `5xx` | Blocked, rate limited or the gateway is failing. Try another network. |
+| Discovery URLs not `200` | A proxy or firewall is blocking sign-in discovery: the usual cause of "Authorize never completes". |
 
 ## Step 3 — Check server-side state with the Willow MCP
 
 If the Willow MCP is connected in this session, use it to see what Willow
 believes about this user. These are read-only lookups.
 
-Don't guess tool names. Find them first:
-
-```bash
-willow tools grep connect     # or: server, status, toolkit, usage, me
-willow tools info <tool>      # read the schema before calling
-```
-
-(In an MCP client, search the tool list for the same keywords.)
+Don't guess tool names. Search the tool list the client already gives you for
+keywords like `connect`, `server`, `status`, `toolkit`, `usage`, `me`, and read
+a tool's schema before calling it. (If the `willow` CLI happens to be
+installed: `willow tools grep <word>` and `willow tools info <tool>` do the
+same.)
 
 What to look for:
 
@@ -105,11 +130,12 @@ or support@withwillow.ai):
 
 ```text
 Summary:        <one line, in the user's words>
-Where:          <client + version> / <CLI or portal> / <page URL if portal>
-Org / user:     <org slug>, <signed-in identity as shown by whoami>
+Where:          <client + version> / <portal page URL, or CLI>
+Org / user:     <org host from Connect MCP>, <how they sign in>
 Started:        <when, and what changed just before>
 Expected:       <what should happen>
 Actual:         <exact error text, copied, not paraphrased>
+Ladder step:    <the lowest rung (1-6) that fails, and the probe result>
 Already tried:  <each step and its result>
 Evidence:       <redacted output of collect-evidence.sh>
 ```
@@ -122,8 +148,7 @@ state which steps changed the behavior even slightly.
 | Task | Command |
 | --- | --- |
 | Gather redacted evidence | `bash scripts/collect-evidence.sh` |
-| Sign-in state (0 ok / 4 re-login) | `willow auth status` |
-| Who am I, which org and context | `willow auth whoami`, `willow context list` |
-| Search tools by keyword | `willow tools grep <word>` |
-| Drop the cached tool list | `willow tools refresh` |
-| Whole-environment check | `willow doctor` |
+| Probe one URL by hand | `curl -sS -i -X POST "<url>" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'` |
+| Check sign-in discovery | `curl -sS -o /dev/null -w "%{http_code}\n" https://<host>/.well-known/oauth-protected-resource` |
+| (CLI, optional) sign-in state | `willow auth status` (0 ok / 4 re-login) |
+| (CLI, optional) drop the cached tool list | `willow tools refresh` |

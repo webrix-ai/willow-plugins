@@ -1,12 +1,13 @@
 ---
 name: triage-willow-auth
 description: >-
-  Fix Willow sign-in and authorization problems: "Unauthorized" or 401, the
-  Authorize step never completing, a 404 on localhost after signing in, a
-  blocked OAuth popup on Connect, `willow auth status` exit code 4, a server
-  stuck on an old auth method, or Re-authenticate not helping. Use when a user
-  can't sign in, keeps getting logged out, or a connected server stopped
-  working after its credentials changed.
+  Fix Willow sign-in and authorization problems for an AI client connected over
+  HTTP MCP (Cursor, Claude Code, Claude Desktop, VS Code, Codex, ChatGPT, ...):
+  "Unauthorized" or 401, the Authorize step never completing or never opening, a
+  404 on localhost after signing in, a blocked OAuth popup on Connect, being
+  signed out repeatedly, `willow auth status` exit code 4, a server stuck on an
+  old auth method, or Re-authenticate not helping. Use when a user can't sign
+  in, or a connected server stopped working after its credentials changed.
 ---
 
 # Triage: sign-in and authorization
@@ -16,39 +17,60 @@ reason a fix doesn't work.
 
 | Login | What it is | Fails as | Fixed by |
 | --- | --- | --- | --- |
-| **Client → Willow** | The AI client or CLI proves who the user is to the Willow gateway | `Unauthorized`, `401`, "no tools", `willow auth status` exit 4 | Sign in again (Section A) |
+| **Client → Willow** | The AI client proves who the user is to the Willow gateway (browser OAuth) | `Unauthorized`, `401`, "no tools", Authorize never completes | Sign in again (Section A) |
 | **Willow → a server** (GitHub, Jira, ...) | The user's own connection to one integration | That one server fails or shows not connected; others work | Connect / Re-authenticate that server (Section B) |
 
 If every server fails the same way, it's Client → Willow. If one fails, it's
 Willow → that server.
 
-Never print tokens while diagnosing: no `willow auth token`, no reading
-`auth.json`.
+Never print tokens while diagnosing: don't dump client config or token files,
+and with the CLI don't run `willow auth token` or read `auth.json`.
 
 ## Section A — Client → Willow
 
-### A1. What does the state say?
+### A1. What is the client really doing?
 
-```bash
-willow auth status      # exit 0 = signed in, 4 = must log in
-willow auth whoami      # identity, org and context currently in use
-```
+A `401` is **not itself the failure**. It is the first answer every HTTP MCP
+client gets, and it carries the pointer to the sign-in service. The question is
+whether the client then completes sign-in. Sign-in has four moving parts:
 
-`whoami` showing an unexpected org or context explains "I'm signed in but see
-nothing". Say so and fix the context rather than re-logging in.
+1. the gateway answers `401` with a challenge;
+2. the client fetches the sign-in metadata (`/.well-known/oauth-*`);
+3. a browser opens the Authorize page and the user clicks **Authorize**;
+4. the browser returns to the client (a `localhost` redirect for many clients),
+   and the client stores the token.
+
+Run the `triage-willow` evidence script. Its endpoint probe tells you whether
+steps 1 and 2 work from this machine:
+
+| Probe | Meaning |
+| --- | --- |
+| `401` + challenge, both discovery URLs `200` | The network side is fine. The problem is in steps 3 or 4: the browser or the client. |
+| Discovery URLs not `200`, or `000` / TLS errors | A proxy, firewall, VPN or certificate setup is blocking sign-in. Escalate to IT or the Willow admin with the probe output. |
+| `200` + web page, or `404` | The URL is wrong, so sign-in never starts. `triage-willow-client-setup`. |
+
+Also check the client's own status for Willow (Claude Code `/mcp`; Cursor
+**Settings → Tools & MCP**; VS Code **MCP: List Servers**). Needs
+authentication → continue below.
+
+CLI users also have `willow auth status` (0 = signed in, 4 = must log in) and
+`willow auth whoami` (identity, org, context).
 
 ### A2. Fix
 
 | Symptom | Fix |
 | --- | --- |
 | `401` / `Unauthorized`, or the Authorize page was closed unclicked | **Disconnect and reconnect from scratch.** In **Connect MCP**, copy a *fresh* URL, add it to the client again, and click **Authorize** when the browser opens. |
-| CLI exit 4 | `willow auth login` in the foreground. Needs a browser; it can't be done from a headless daemon. |
 | Browser shows a **404 on `localhost`** after you finish signing in | The redirect back to the client was missed. Return to the client, trigger authentication again (restart the session or re-run the MCP setup), retry. It usually succeeds on the 1st or 2nd retry. |
+| Authorize page never opens | Reconnect from the client (Claude Code: `/mcp` → `willow` → **Reconnect**; Cursor: switch Willow off and on). If the probe was clean, check that the browser isn't blocking the window. |
 | Authorize page loops or never returns | Fully quit the client, reopen it, start the connection again once. Don't click Authorize repeatedly in several tabs. |
-| Signed in as the wrong person or org | `willow auth logout` then `willow auth login`, or pick the right org from the profile menu. Organizations are separate under one login. |
-| Works, then fails after days (CLI) | Expired token the background daemon can't refresh. `willow auth login`, then see `diagnose-willow` if timeouts follow. |
+| Signed in as the wrong person or org | Disconnect the entry and reconnect, choosing the right account in the browser. Organizations are separate under one login; the org is the host in the URL, and the profile menu in Willow switches orgs. |
+| Works, then needs sign-in again | The stored sign-in expired or was revoked. Reconnect the same way. Frequent repeats are worth escalating with the evidence output. |
+| CLI exit 4 | `willow auth login` in the foreground. Needs a browser; it can't be done from a headless daemon. |
+| CLI works, then fails after days | Expired token the background daemon can't refresh. `willow auth login`, then see `diagnose-willow` if timeouts follow. |
 
-Ask before running `willow auth logout`; it removes the stored sign-in.
+Reconnecting changes the user's setup: say what you will remove and re-add.
+With the CLI, `willow auth logout` removes the stored sign-in, so ask first.
 
 ### A3. Things that are not fixable here
 
@@ -85,15 +107,16 @@ behalf. They are done in the Willow portal, not from here.
 
 ### B3. Confirm with the Willow MCP
 
-If the Willow MCP is available (`willow tools grep connect` to find it, and
-read-only calls only), check whether the server shows as connected for this
-user. A server that's connected in Willow but failing upstream is an
+If the Willow MCP is available (search the client's tool list for `connect` or
+`status`, read the schema first, read-only calls only), check whether the
+server shows as connected for this user. A server that's connected in Willow but failing upstream is an
 upstream-side problem: escalate with the exact error and the time.
 
 ## Verify and escalate
 
-Verified means: `willow auth status` exits 0 (or the client lists tools) *and*
-a trivial read-only tool call on the affected server succeeds.
+Verified means: the client shows Willow as connected and lists tools (CLI:
+`willow auth status` exits 0) *and* a trivial read-only tool call on the
+affected server succeeds.
 
 If not, use the `triage-willow` evidence script and report, and state which
 Section (A or B) failed and with what exact error text.

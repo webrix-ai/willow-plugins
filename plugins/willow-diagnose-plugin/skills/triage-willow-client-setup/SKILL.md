@@ -41,6 +41,16 @@ script; it prints only each Willow entry's type and URL (never headers or
 tokens) and flags a non-`https://` URL, a missing `/mcp` path, and a missing
 `type`. Don't `cat` client config files yourself: they can hold secrets.
 
+The same script probes each URL the way a client does before signing in:
+
+| Probe | Meaning |
+| --- | --- |
+| `401` + OAuth challenge | The URL reaches a Willow gateway; sign-in is next. Normal. It can't tell a wrong org or server name from a right one, so still compare with **Connect MCP**. |
+| `200` + a web page | The URL is the portal, not the MCP endpoint: add `/mcp`. |
+| `404` | Typo in the path. |
+| `301` and similar | Usually `http://` → `https://`. Use the final `https://` URL in the client. |
+| `000` / timeout / TLS error | See Step 3. |
+
 ## Step 2 — Fix the entry for this client
 
 ### Cursor
@@ -92,12 +102,16 @@ fails, quit and reopen the client.
 ## Step 3 — Connection refused or can't reach the server
 
 1. The internet works and the URL uses `https://`.
-2. The evidence script's gateway probe: `401` = reachable; `000` or timeout =
-   network, VPN, proxy, DNS or TLS. With a corporate proxy or custom CA,
-   `NODE_EXTRA_CA_CERTS` / `HTTPS_PROXY` matter for the CLI and Node-based
-   clients.
-3. If the host doesn't resolve or the probe returns `404`, ask the admin to
-   confirm the org's gateway domain is deployed and active.
+2. The evidence script's endpoint probe: `401` = reachable; `000`, a timeout or
+   a TLS error = network, VPN, proxy, DNS or certificate problem on this
+   machine. The `curl:` line under the probe says which (for example `Could not
+   resolve host`, or a certificate error). With a corporate proxy or custom CA,
+   `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` matter for Node-based clients.
+   Try another network (a phone hotspot) to separate a company network block
+   from a Willow problem.
+3. If the host doesn't resolve, ask the admin to confirm the org's gateway
+   domain is deployed and active. A `403`, `429` or `5xx` from the probe means
+   something is blocking or failing the request: report the exact code.
 
 ## Step 4 — Connected but nothing works yet
 

@@ -9,6 +9,12 @@ Tools, MCP Servers, Willow CLI). Keep this file in step with those pages.
 | `Unauthorized` / `401` | Session expired or authorization never completed | `willow auth status` (4 = not signed in) | Disconnect and reconnect from scratch with a fresh URL from **Connect MCP**; CLI: `willow auth login` |
 | Browser shows 404 on `localhost` right after signing in | Redirect back to the client was missed | — | Go back to the client, trigger re-authentication, retry. Usually works within 1–2 attempts |
 | Popup never appears on **Connect** | Browser blocked the popup | Address bar popup indicator | Allow popups for the Willow site, click **Connect** again |
+| Client "connects" but gets a web page / no MCP response | URL is the Willow portal: `/mcp` is missing (endpoint probe: `200` + HTML) | Evidence script endpoint probe | Use `https://<host>/mcp` from **Connect MCP** |
+| Probe returns `404` on POST | Typo in the path (`/mcpp`, wrong segment) | Endpoint probe | Fix the path to match **Connect MCP** |
+| `http://` URL fails or loops | The gateway redirects `http://` to `https://`; a client may drop the POST on the redirect | Endpoint probe shows `301` | Use the `https://` URL directly |
+| `401` in a client log, but sign-in does start | Normal: the first answer every client gets, which points it at sign-in | Client then opens the browser | Nothing to fix; complete **Authorize** |
+| "Authorize never completes" and nothing opens, other clients on another network work | A proxy, firewall, VPN or TLS inspection blocks `/.well-known/oauth-*`, `/authorize`, `/token` or `/register` | Evidence script: discovery URLs not `200`, or TLS errors | Ask IT to allow the Willow host; test on another network |
+| Wrong org or server name in the URL | Both still answer `401` before sign-in, so the typo only shows after Authorize | Compare host and names with **Connect MCP** | Copy the URL from **Connect MCP** again |
 | Connection refused / can't reach server | Network, `http://` instead of `https://`, gateway domain not deployed | Gateway probe in the evidence output | Fix connectivity, use `https://`, ask the admin to confirm the domain is active |
 | Cursor ignores the Willow entry | Missing `"type": "http"` in `~/.cursor/mcp.json` | Open the file | Add `"type": "http"`, restart Cursor |
 | Claude Code shows Willow `disconnected` | Connection dropped or never added | `/mcp` inside Claude Code | `claude mcp add --transport http willow https://<org>.withwillow.ai/mcp` |

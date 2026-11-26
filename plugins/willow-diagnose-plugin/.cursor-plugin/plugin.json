@@ -2,7 +2,7 @@
   "name": "willow-diagnose-plugin",
   "displayName": "Willow Diagnose Plugin",
   "version": "1.1.0",
-  "description": "Diagnose and triage Willow problems: CLI issues (daemon timeout, auth, gateway) and known end-user issues (no tools, 401, client setup, failing tool calls).",
+  "description": "Triage Willow problems for end users: AI clients connected over HTTP MCP (no tools, 401 and sign-in, client setup, failing tool calls) plus the optional willow CLI.",
   "author": {
     "name": "Webrix",
     "email": "plugins@webrix.ai"
@@ -11,9 +11,12 @@
   "repository": "https://github.com/webrix-ai/willow-plugins",
   "license": "MIT",
   "keywords": [
+    "claude-code",
+    "cursor",
     "daemon-timeout",
     "diagnose",
     "doctor",
+    "http-mcp",
     "known-issues",
     "mcp",
     "oauth",
@@ -24,9 +27,11 @@
   ],
   "category": "developer-tools",
   "tags": [
-    "willow",
+    "cli",
     "diagnostics",
-    "cli"
+    "mcp",
+    "support",
+    "willow"
   ],
   "skills": "./skills/"
 }

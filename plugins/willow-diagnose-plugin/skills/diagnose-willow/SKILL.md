@@ -10,6 +10,11 @@ description: >-
 
 # Troubleshoot the willow CLI
 
+**Scope:** this skill is only for the `willow` command-line tool and its local
+daemon. Most people connect an AI client straight to Willow over HTTP MCP, with
+no CLI at all. For "no tools", 401, a client that won't connect, or a failing
+tool call in that setup, use `triage-willow` instead.
+
 Most "willow is broken" reports fall into four buckets: a stale local **daemon**,
 **expired auth**, a slow/unreachable **gateway**, or a local **network/TLS**
 setup (proxy, corporate CA, VPN). Start with the built-in `willow doctor` — it
