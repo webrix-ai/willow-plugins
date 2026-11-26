@@ -3,10 +3,12 @@ name: triage-willow-missing-tools
 description: >-
   Fix Willow connections that work but show no tools, or the wrong ones: an AI
   client (Cursor, Claude Code, Claude Desktop, VS Code, Codex, ChatGPT, ...)
-  says "no tools available", an MCP server or tool is missing, tool names or
-  API-key `account` choices look out of date, `Unknown account "<name>"`, or
-  only one server's tools appear. Use when the user is connected and signed in
-  but the tool list is empty, partial or stale.
+  says "no tools available", shows only search_tools / execute_tool instead of
+  the real tools, an MCP server or tool is missing, the willow CLI shows tools
+  the client doesn't, tool names or API-key `account` choices look out of date,
+  `Unknown account "<name>"`, or only one server's or toolkit's tools appear.
+  Use when the user is connected and signed in but the tool list is empty,
+  partial or stale.
 ---
 
 # Triage: no tools, missing tools, or a stale tool list
@@ -15,7 +17,34 @@ The connection exists, but the tools the user expects aren't there. Work down
 the checks in order and stop at the first one that explains it. All checks are
 read-only until the **Fix** at the end of a step.
 
-## Step 1 — Is it really signed in?
+## Step 1 — What exactly does the client list?
+
+Ask the client what Willow tools it has (or look at its MCP panel).
+
+**Exactly these five tools?**
+`search_tools`, `get_mcp_servers`, `get_mcp_tools`, `get_tool_details`,
+`execute_tool`
+
+That is **Dynamic MCP**, and nothing is broken. New organizations default to
+it: a URL that names no server or toolkit lists these five discovery tools,
+and the AI looks up and runs the real tools through them. It keeps the client's
+context small.
+
+- To use it, ask for the task in plain words. The AI calls `search_tools`
+  (for example "create jira issue"), then `execute_tool`.
+- To see one server's real tools in the list, connect with a URL that names it
+  (Step 3).
+- To change what an unscoped URL lists, the admin changes the org's
+  **Default MCP** setting (**All MCPs**, **Dynamic MCP** or **Default
+  Toolkit**).
+
+**Nothing at all?** Go to Step 2. **Some, but not the expected ones?** Go to
+Step 3.
+
+**The `willow` CLI shows more than the client?** Expected. The CLI ignores
+the Default MCP setting and always gets every tool the user can access.
+
+## Step 2 — Is it really signed in?
 
 An unauthenticated connection looks exactly like "no tools". If the user
 closed the browser Authorize page without clicking **Authorize**, the
@@ -28,38 +57,60 @@ connection was never authenticated.
   back.
 - CLI users: `willow auth status` (exit 4 = not signed in).
 
-## Step 2 — Is the client asking for a narrowed scope?
+## Step 3 — What scope is the client asking for?
 
-A URL ending in `?mcp=<server>` or `?toolkit=<name>`, or in the path form
-`/mcp/mcp/<server>` or `/mcp/toolkit/<name>`, deliberately shows only that
-server or toolkit. A **Use** button on a server card builds exactly such a URL.
+What the gateway lists depends on what the connection names, in this order:
 
-Check the URL in the client entry (the `triage-willow` evidence script prints
-it). Fix: use the unscoped URL from **Connect MCP** (`https://<host>/mcp`) if
-the user wants everything, or a different entry for a different server. Say
-which URL you're proposing, and change the user's config only with their OK.
+1. **A server or toolkit named in the connection** always wins:
+   - query: `?mcp=<server>` or `?toolkit=<name>`
+   - path: `/mcp/<server>`, `/mcp/mcp/<server>`, `/mcp/toolkit/<name>`
+   - header: `X-MCP: <server>` or `X-Toolkit: <name>`. Headers aren't visible
+     in the URL; ask the user whether their config has a `headers` block.
+     Don't print its values.
+2. **Otherwise the org's Default MCP setting:**
+   - **All MCPs**: every tool the user can reach, optionally capped at a
+     number of tools. With a cap, only the most recently used tools are listed,
+     so a rarely used tool can be "missing".
+   - **Dynamic MCP**: the five discovery tools (Step 1).
+   - **Default Toolkit**: only the tools in one toolkit the admin picked.
+
+A **Use** button on a server card builds a URL scoped to that server; the
+`triage-willow` evidence script prints the URLs in each client's config.
+
+**Fix:** pick the connection that matches what the user wants. Use one URL per
+server (`.../mcp/mcp/<server>`) to list that server's tools exactly. Use the
+unscoped URL to get the org default. Changing the cap or the default is an
+admin setting; changes reach clients within about 30 seconds, at their next
+tool-list fetch. Say which URL you propose, and edit the config only with the
+user's OK.
 
 CLI users have the same thing in contexts: `willow context list` (starred =
-active; shows its `--mcp` / `--toolkit`), then `willow context use <name>`.
-Tell the user which context you're moving to.
+active), then `willow context use <name>`. Say which context you're moving to.
 
-## Step 3 — Does Willow think the server is available to this user?
+## Step 4 — Does Willow make the server available to this user, in this client?
 
-Using the Willow MCP (search the client's tool list for `server`, `connect`,
-`status`; read the schema first; call read-only tools only), answer for the
-missing server:
+**Look it up rather than guess.** If the session has the Dynamic MCP tools,
+they are read-only lookups of exactly what this user can reach:
+
+- `get_mcp_servers` lists every server available to the user (name, slug,
+  description). Missing here = not available to this user.
+- `get_mcp_tools` with `mcp_slug` lists that server's tools. Missing here = the
+  tool doesn't exist or the admin disabled it.
+
+Otherwise look for similar read-only tools in the client's tool list, or ask the
+user to check the **MCP Servers** page in Willow (status dot,
+**Enable**/**Disable**, tool count).
 
 | Finding | Meaning | Fix |
 | --- | --- | --- |
-| Not listed | Not granted to this user | Ask the admin for access. Not a bug. |
-| Listed, not connected | Connection didn't finish | **Connect** it in Willow (`triage-willow-auth` if it fails) |
-| Listed, **disabled** | Turned off, so its tools vanish immediately | Click **Enable** on the server card |
+| Server not listed for the user | Not assigned to them, not published yet, or disabled by the admin | Ask the admin. Not a bug. |
+| Listed, not connected (portal) | The user's own connection to it never finished | **Connect** it in Willow (`triage-willow-auth` if that fails) |
+| Listed, shows **Enable** (portal) | The user turned it off, so its tools vanish immediately | Click **Enable** on the server card |
+| Server listed but one tool missing | The admin disabled that tool, or it was removed | Ask the admin if the user needs it |
+| Works in one AI client but not another | The server is restricted to certain AI tools (its **Allowed AI Tools** setting), or the other client isn't enabled for the org | Use an allowed client, or ask the admin |
 | Connected, 0 tools | Upstream or auth problem on that server | `triage-willow-auth` (re-authenticate), then escalate with evidence |
 
-No suitable Willow MCP tool? Ask the user to open the **MCP Servers** page and
-read off the status dot, **Enable**/**Disable** and the tool count.
-
-## Step 4 — Is the client holding an old tool list?
+## Step 5 — Is the client holding an old tool list?
 
 A client keeps the tool list it fetched when it connected. Changing a server's
 API keys while a session is open leaves the client with the old shape:
@@ -69,7 +120,9 @@ API keys while a session is open leaves the client with the old shape:
 - a call naming a key that no longer exists fails with
   `Unknown account "<name>"` and lists the keys that do.
 
-`Unknown account` is the signature of a stale list. Don't retry the call.
+`Unknown account` is the signature of a stale list. Don't retry the call. The
+same applies after a server is added, removed, enabled or disabled, or after
+the admin changes Default MCP.
 
 **Fix** (any one; the first is universal):
 
@@ -78,22 +131,22 @@ API keys while a session is open leaves the client with the old shape:
 3. Reload just the Willow connection (Cursor: switch Willow off and on in
    **Tools & MCP**; Claude Code: `/mcp` → `willow` → **Reconnect**; VS Code:
    **Restart Server**). More clients are in `triage-willow-client-setup`.
-4. CLI users: `willow tools refresh` clears the cached catalog; the next
-   command fetches a fresh one.
-
-The same applies after a server is added or removed in Willow.
+4. CLI users: `willow tools refresh` clears the cached catalog.
 
 **Verify:** with two or more keys each tool shows an `account` parameter naming
 the user's keys; with one key there is none.
 
-## Step 5 — Client never picked up the config
+## Step 6 — The client never picked up the config, or dropped tools
 
-If it is a brand new setup and the client lists nothing at all, the entry may
-be ignored. Cursor needs `"type": "http"`; most clients need a full restart.
-Use `triage-willow-client-setup`.
+- A brand new setup that lists nothing: the entry may be ignored. Cursor needs
+  `"type": "http"`; most clients need a full restart. Use
+  `triage-willow-client-setup`.
+- A very large catalog can exceed a client's limit on tools per connection, so
+  the client hides some. Fix: Dynamic MCP, a per-server URL, or the admin's
+  tool cap.
 
-## Still empty?
+## Still missing?
 
 Run the `triage-willow` skill's evidence script and escalate with its report.
-Include which of the five steps you ruled out, and the server's tool count as
-Willow reports it versus what the client shows.
+Include which steps you ruled out, what the client lists, and what
+`get_mcp_servers` / `get_mcp_tools` (or the portal) show for the same user.

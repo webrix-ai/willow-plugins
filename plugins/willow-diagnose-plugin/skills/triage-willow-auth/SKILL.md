@@ -4,7 +4,10 @@ description: >-
   Fix Willow sign-in and authorization problems for an AI client connected over
   HTTP MCP (Cursor, Claude Code, Claude Desktop, VS Code, Codex, ChatGPT, ...):
   "Unauthorized" or 401, the Authorize step never completing or never opening, a
-  404 on localhost after signing in, a blocked OAuth popup on Connect, being
+  404 on localhost after signing in, a browser error page such as Account Not
+  Found, AI Tool Disabled, Client Not Approved, Authorization Denied or Sign-In
+  Expired, "Access denied: your IP address", "We couldn't find that
+  organization" on the universal URL, a blocked OAuth popup on Connect, being
   signed out repeatedly, `willow auth status` exit code 4, a server stuck on an
   old auth method, or Re-authenticate not helping. Use when a user can't sign
   in, or a connected server stopped working after its credentials changed.
@@ -56,6 +59,21 @@ authentication → continue below.
 CLI users also have `willow auth status` (0 = signed in, 4 = must log in) and
 `willow auth whoami` (identity, org, context).
 
+### A1b. Did the browser show a Willow error page?
+
+If sign-in ended on a page with a title like **Account Not Found**, **AI Tool
+Disabled**, **Client Not Approved**, **Authorization Denied** or **Sign-In
+Expired**, that title is the diagnosis. Look it up in
+[references/sign-in-errors.md](references/sign-in-errors.md). Most of these
+need the admin or IT, and re-trying the same sign-in won't change them. Copy the
+details shown on the page into the report.
+
+Using the universal URL `https://mcp.withwillow.ai/mcp`? There the org is typed
+at sign-in, not in the URL. "We couldn't find that organization" means a wrong
+identifier, and "isn't reachable through the universal endpoint" means the org
+has its own gateway, so use the **Connect MCP** URL instead. The same reference
+covers both.
+
 ### A2. Fix
 
 | Symptom | Fix |
@@ -66,6 +84,8 @@ CLI users also have `willow auth status` (0 = signed in, 4 = must log in) and
 | Authorize page loops or never returns | Fully quit the client, reopen it, start the connection again once. Don't click Authorize repeatedly in several tabs. |
 | Signed in as the wrong person or org | Disconnect the entry and reconnect, choosing the right account in the browser. Organizations are separate under one login; the org is the host in the URL, and the profile menu in Willow switches orgs. |
 | Works, then needs sign-in again | The stored sign-in expired or was revoked. Reconnect the same way. Frequent repeats are worth escalating with the evidence output. |
+| `403` `Access denied: your IP address (...) is not permitted by this organization's IP access filter` | The org only allows certain networks. Connect from the office network or VPN, or ask the admin to update the filter. Signing in again won't help. |
+| Only one AI client can't sign in, others can | That client is disabled for the org (**AI Tool Disabled**), or only allowed with admin-issued credentials (**Client Not Approved**). Use an allowed client, or ask the admin. |
 | CLI exit 4 | `willow auth login` in the foreground. Needs a browser; it can't be done from a headless daemon. |
 | CLI works, then fails after days | Expired token the background daemon can't refresh. `willow auth login`, then see `diagnose-willow` if timeouts follow. |
 
@@ -104,6 +124,18 @@ Use the card's **⋮** menu:
 
 These change the user's connection, so confirm before doing them on their
 behalf. They are done in the Willow portal, not from here.
+
+A failing tool call often says this itself, with a link: `Sign in to <server>
+to use this tool ... <url>`, `Failed to generate access token for <server>.
+Please reauthorize at: <url>`, or `Your single sign-on session for <server> has
+expired ... <url>`. Show the user that link; it goes to the right place. Two
+messages mean signing in **won't** help: `... missing OAuth scope ... A Willow
+admin needs to reconnect ...` and `... no sign-in can fix it ...`. Both go to the
+admin.
+
+A **Nothing to Connect** page after **Connect** means the server needs no
+separate sign-in: it uses the Willow sign-in, or none. If its tools still fail,
+look elsewhere (`triage-willow-tool-failures`).
 
 ### B3. Confirm with the Willow MCP
 

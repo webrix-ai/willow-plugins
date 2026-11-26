@@ -5,8 +5,9 @@ description: >-
   ignoring the Willow entry (missing "type": "http"), Claude Code showing Willow
   as disconnected, wrong or http:// gateway URL, connection refused, a client
   that needs a restart or reconnect to pick up changes, VS Code, Codex, OpenCode,
-  Claude Desktop, ChatGPT and Devin Desktop refresh steps. Use when a Willow MCP
-  server was added to an AI client but the client doesn't see or reach it.
+  Claude Desktop, ChatGPT and Devin Desktop refresh steps, the universal URL
+  mcp.withwillow.ai, and the org IP access filter. Use when a Willow MCP server
+  was added to an AI client but the client doesn't see or reach it.
 ---
 
 # Triage: client configuration and connection
@@ -23,18 +24,29 @@ https://<org>.withwillow.ai/mcp?mcp=<server>     # one server only
 https://<org>.withwillow.ai/mcp?toolkit=<name>   # one toolkit only
 ```
 
-Scoped URLs also appear in a path form, for example `/mcp/mcp/<server>` and
-`/mcp/toolkit/<name>`. Both mean "only this server/toolkit".
+Scoped connections also come in a path form (`/mcp/<server>`,
+`/mcp/mcp/<server>`, `/mcp/toolkit/<name>`) or as a header (`X-MCP: <server>`,
+`X-Toolkit: <name>`). The admin picks the org's format, and **Connect MCP**
+always shows the right one. All of them mean "only this server/toolkit". A URL
+with no scope lists whatever the org's Default MCP setting says; for new orgs
+that's five discovery tools (`search_tools`, `execute_tool`, ...), not every
+tool. See `triage-willow-missing-tools`.
 
 The host can be `<org>.withwillow.ai`, `<org>.mcp-s.com`, a region-specific or
 a custom domain, so don't "correct" a host that differs from this example.
-Compare it character by character with what **Connect MCP** shows. Look for:
+
+**The universal URL** `https://mcp.withwillow.ai/mcp` (EU:
+`https://mcp.eu.withwillow.ai/mcp`) is valid for every org: the org is chosen
+at sign-in instead of in the host. Orgs with their own gateway (self-hosted or
+custom domain) can't use it and need the **Connect MCP** URL.
+
+Compare the URL character by character with what **Connect MCP** shows. Look
+for:
 
 - `http://` instead of `https://`, or a mangled scheme such as `ttps://`
 - a typo in the org or server name (this fails *silently*)
 - a missing `/mcp` path
-- a scope (`?mcp=`, `?toolkit=`, `/mcp/mcp/...`, `/mcp/toolkit/...`) the user
-  didn't intend
+- a scope the user didn't intend
 
 Find what the client actually has by running the `triage-willow` evidence
 script; it prints only each Willow entry's type and URL (never headers or
@@ -49,6 +61,7 @@ The same script probes each URL the way a client does before signing in:
 | `200` + a web page | The URL is the portal, not the MCP endpoint: add `/mcp`. |
 | `404` | Typo in the path. |
 | `301` and similar | Usually `http://` → `https://`. Use the final `https://` URL in the client. |
+| `403` with `Access denied: your IP address ...` | The org's IP access filter blocks this network. Office network or VPN, or the admin updates the filter. |
 | `000` / timeout / TLS error | See Step 3. |
 
 ## Step 2 — Fix the entry for this client

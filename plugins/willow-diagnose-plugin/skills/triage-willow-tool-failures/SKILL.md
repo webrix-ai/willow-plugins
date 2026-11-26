@@ -2,12 +2,14 @@
 name: triage-willow-tool-failures
 description: >-
   Triage Willow tool calls that are listed in an AI client (Cursor, Claude Code,
-  Claude Desktop, VS Code, Codex, ChatGPT, ...) but fail: a request held on a
-  human approval popup or blocked by a guard, invalid-parameter or schema
-  errors, a tool that is not found, 401, 403 or permission denied,
-  `Unknown account`, calls that fail after a server was disabled or
-  disconnected, plus willow CLI error types and exit codes 1 to 4. Use when the
-  tool exists in the list but calling it doesn't work.
+  Claude Desktop, VS Code, Codex, ChatGPT, ...) but fail: "Please approve the
+  request at", "Blocked by Willow guard(s)", "Sign in to <server> to use this
+  tool", "Failed to generate access token ... reauthorize", "You do not have
+  access to this MCP server", "MCP server is disabled", "Tool not found",
+  "Access denied: your IP address", "no sign-in can fix it", `Unknown account`,
+  invalid-parameter errors, upstream 401/403/404, plus willow CLI error types
+  and exit codes. Use when the tool exists in the list but calling it doesn't
+  work.
 ---
 
 # Triage: a tool call fails, is blocked, or is waiting
@@ -15,93 +17,107 @@ description: >-
 The tool is visible, so discovery and sign-in are mostly fine. Find out *which
 layer* answered with the failure, then fix that layer.
 
-## Step 1 — Read the exact error, and find who said it
+**Willow's messages usually name the fix.** They are written for the AI to
+relay: many end with a link to show the user, or say plainly that only an admin
+can fix it ("no sign-in can fix it", "A Willow admin needs to ..."). Read the
+message literally and follow it. Don't override it with a generic "try signing
+in again".
 
-Get the full text, not a paraphrase. Then place it:
+## Step 1 — Get the exact text and classify it
 
-| It looks like | Who said it | Go to |
+Copy the full message, not a paraphrase. Then match it against
+[references/error-messages.md](references/error-messages.md), which lists every
+known Willow message with its meaning and who fixes it. The groups:
+
+| The message is about | Typical start | Go to |
 | --- | --- | --- |
-| The client itself says the server is disconnected, needs authentication, or can't connect | The client, before reaching Willow | `triage-willow-auth` or `triage-willow-client-setup` |
-| `401`, "invalid token", "unauthorized" from **Willow** (all tools fail the same way) | The gateway: the client's sign-in lapsed | `triage-willow-auth` Section A |
-| An argument or schema complaint (invalid params, missing required field, unknown tool) | Willow or the client, before the tool ran | Step 2 |
-| `Unknown account "<name>"` | Willow, from a stale tool list | Step 2 |
-| The call hangs, a popup appears, or the text mentions a blocked request or policy | A guard or approval rule | Step 3 |
-| A message in the voice of the service (GitHub, Jira, ...), or `401` / `403` / `404` from it | The upstream service, after the tool ran | Step 4 |
+| Access or availability | `You do not have access ...`, `MCP server is disabled`, `... not published`, `Tool not found`, `... toolkit ...`, `Access denied: your IP address ...` | Step 2 |
+| The user's own connection to that server | `Sign in to <server> ...`, `Failed to generate access token ...`, `... single sign-on session ... expired`, `... credential this user supplied ...`, `Unknown account` | Step 3 |
+| A guard, condition or approval | `Please approve the request at: ...`, `Blocked by Willow guard(s) ...`, `... blocked by the "<name>" condition`, `[Output withheld by Willow guard(s) ...]` | Step 4 |
+| The arguments | invalid params, missing required field, invalid JSON | Step 5 |
+| The upstream service itself | the service's own words or status code | Step 6 |
+| The client can't reach Willow at all (disconnected, 401 on every tool) | — | `triage-willow-auth` / `triage-willow-client-setup` |
 
-CLI users get more structure for free. Errors look like `Error [TYPE]: message`
-with a `Suggestion:` line, and the exit code names the layer:
+CLI users get structure for free: `Error [TYPE]: message` plus a `Suggestion:`
+line, and the exit code names the layer (1 = arguments or config, 2 = the tool
+ran and failed, 3 = network, 4 = not signed in). `Daemon request timeout` is
+the CLI's own problem: use `diagnose-willow`.
 
-| Exit code | Layer | Go to |
+## Step 2 — Access and availability
+
+These are decisions, not faults. The user can fix two of them; the rest need
+the admin:
+
+- **The user can fix:** a typo'd server or toolkit slug (`MCP server not
+  found`, `Toolkit not found`), and `Tool is not part of this toolkit` (connect
+  without the toolkit scope; see `triage-willow-missing-tools` Step 3).
+- **Network:** `Access denied: your IP address (...) is not permitted by this
+  organization's IP access filter`. Connect from the office network or VPN, or
+  ask the admin to update the filter.
+- **The admin must fix:** not assigned, disabled, not published, a disabled
+  tool, a server restricted to other AI clients, a deactivated user or org.
+  Give the user the exact message and the server name to send.
+
+## Step 3 — The user's own connection to that server
+
+Most of these messages carry a link. **Show the link to the user** and have
+them open it. Don't open it for them, and don't paste credentials anywhere.
+
+| Message | Action |
+| --- | --- |
+| `Sign in to <server> to use this tool ... <url>` | User connects at the link, then retries |
+| `Failed to generate access token for <server>. Please reauthorize at: <url>` | User re-authorizes at the link (same as **Re-authenticate** on the server card) |
+| `... single sign-on session for <server> has expired ... <url>` | User signs in again at the link |
+| `... credentials the user supplies themselves ... <url>` / `The API key placeholder ... was not filled` | User adds a valid key for that server |
+| `... the credential this user supplied does not cover it ...` | User creates a new key **with the missing permission**. Re-saving the same key won't help. |
+| `... missing OAuth scope ... A Willow admin needs to reconnect ...` | Admin. Don't send the user to sign in again: it can't help. |
+| `... could not be authenticated, and no sign-in can fix it ...` | Admin or Willow support. Show no sign-in link. |
+| `Unknown account "<name>"` | Stale tool list: refresh the client (`triage-willow-missing-tools` Step 5), then retry with a key the error lists |
+| `... runs on a Willow Tunnel gateway, and its run service is not connected` | Admin starts the tunnel |
+
+If the admin changed the server's sign-in method, **Re-authenticate** keeps the
+old one: **Disconnect**, then **Connect** (`triage-willow-auth` Section B).
+
+## Step 4 — Guards, conditions and approvals
+
+- **`Please approve the request at: <url>`.** The call is waiting for a human
+  check. The approval belongs to the user who made the call, and it expires.
+  Show the link. The user reviews the arguments and approves or declines, and
+  then the call is retried. Never approve on their behalf. Some clients show an
+  approval card in the chat instead of a link.
+- **`Blocked by ...`, `... blocked by the "<name>" condition`, `Access blocked
+  by your organization's risk policy`.** This is policy, working as intended.
+  Don't rephrase or split the request to get past it. If the user thinks it's
+  wrong, they send the exact message (including the guard or condition name) to
+  their admin.
+- **`[Output withheld by Willow guard(s): ...]`.** The tool **ran**; only its
+  result was hidden. Don't re-run it, especially a write.
+- **`The "<name>" condition could not be evaluated, so the call was blocked.`**
+  An admin-side rule failed. Escalate with the time.
+
+## Step 5 — Bad arguments (before the tool ran)
+
+Compare the call with the tool's schema. In an MCP client it's in the tool
+definition; with Dynamic MCP, `get_tool_details`; with the CLI,
+`willow tools info <tool>`. Fix names, required fields and types. Don't retry
+the same failing call: change the input.
+
+## Step 6 — The upstream service answered
+
+The message is in the service's own words (GitHub, Jira, ...):
+
+| Upstream says | Meaning | Fix |
 | --- | --- | --- |
-| 1 | Client side: bad arguments or config | Step 2 |
-| 2 | The tool ran and failed | Step 4 |
-| 3 | Network: connection failed | `triage-willow-client-setup` Step 3 |
-| 4 | Not signed in | `triage-willow-auth` |
-
-## Step 2 — Bad input (before the tool ran)
-
-Compare the call with the tool's schema. In an MCP client the schema is in the
-tool's definition (ask the client to show the tool's parameters); CLI users run
-`willow tools info <tool>`.
-
-| Error | Meaning | Fix |
-| --- | --- | --- |
-| Invalid params / missing required argument (`INVALID_PARAMS`, `MISSING_ARGUMENT` in the CLI) | Arguments don't match the schema | Fix names, required fields and types against the schema |
-| Arguments not valid JSON (`INVALID_JSON_ARGUMENTS`, CLI) | The argument string isn't valid JSON | Quote string keys; wrap the whole arg in single quotes, or pipe JSON on stdin |
-| Tool not found (`TOOL_NOT_FOUND`) | Wrong name, or the tool is outside the current scope (a URL or CLI context limited to one server or toolkit) | Use a "Did you mean" suggestion if given; search the tool list; check the URL scope (`triage-willow-missing-tools` Step 2) |
-| `TOOL_DISABLED` (CLI) | The tool is in `disabledTools` of the user's own CLI config | Tell the user; removing it is their call (`willow config edit`) |
-| `Unknown account "<name>"` | Stale tool list: a key was added, removed or renamed since the client connected | Refresh the tool list, then retry with a key from the list the error prints. See `triage-willow-missing-tools` Step 4. |
-
-Don't retry the same failing call. Change the input based on the schema.
-
-## Step 3 — Blocked or held for approval
-
-A request can be stopped before it runs, by an organization guard or an
-approval rule. Signs: the call hangs, a **human approval popup** appears
-(options: allow once, always allow, deny), or the error mentions a blocked
-request or policy.
-
-- **Popup present:** the user decides. Never approve on their behalf. *Allow
-  once* is the cautious choice; *always allow* is remembered (for browser
-  requests, by hostname).
-- **Popup never appears** (client or extension not loaded): fully restart the
-  client or browser so policy is re-read, and confirm the extension is active
-  on the page.
-- **Hard denial** (blocked, no popup): this is policy, not a fault. Don't work
-  around it; give the user the exact message and tell them to ask their admin
-  to review the rule that matched.
-
-## Step 4 — The tool ran and failed
-
-Treat the message as coming from the upstream service (GitHub, Jira, ...) and
-read it as that service would say it.
-
-| Message | Likely cause | Fix |
-| --- | --- | --- |
-| `401`, "unauthorized", "token expired" from that service | The user's connection to that server lapsed | **Re-authenticate** the server (`triage-willow-auth` Section B) |
-| `403`, "forbidden", "permission denied" | The user's account on that service, or their Willow access, lacks permission | Don't escalate privileges. Ask the service owner or the Willow admin to grant it. |
-| `404`, "not found" | Wrong identifier or the resource isn't visible to this account | Verify the ID with a read-only listing call |
-| Timeout, slow, intermittent | Slow upstream service, or gateway latency | Retry once; if repeated, collect evidence |
-| Works for others but not this user | Per-user connection or access | Compare with the Willow MCP's view of this user's connection |
-| Server vanished mid-conversation | It was disabled or disconnected; its tools go away immediately | **Enable** or reconnect it in Willow |
-
-## Step 5 — CLI only: does it hang?
-
-`Daemon request timeout` is a local daemon problem, not a tool failure. Use
-`diagnose-willow`.
-
-## Using the Willow MCP
-
-Read-only lookups help here: the user's recent calls (success rate, errors,
-which client) and whether the server is connected and enabled for them.
-Find them by searching the client's tool list for `usage`, `connect` or
-`status` (CLI users: `willow tools grep usage`), read each schema first, and
-call only read-only ones. If none exist, don't invent one: ask the user to
-check **Analytics** and the **MCP Servers** page in Willow.
+| `403`, forbidden, permission denied | The user's account on that service can't see or do this | The service owner grants it. Don't look for a workaround. |
+| `404`, not found | Wrong ID, or not visible to this account | Verify with a read-only listing call |
+| `400`, validation error | Arguments wrong for that service | Fix against the schema |
+| Timeout, `5xx`, slow | Service slow or down | Retry once; if it repeats, escalate with the time |
+| Works for others, not this user | Per-user connection or access | Compare this user's connection (Step 3) |
 
 ## Escalate
 
 Run the `triage-willow` evidence script and fill its report. For a tool failure
-always add: the tool name, the exact arguments (with secrets removed), the exact
-error text, the exit code if it came from the CLI, which client it came from,
-and the time it happened so support can find the call in the logs.
+always add the tool and server name, the exact error text, the arguments (with
+secrets removed), which client, and the time, so support can find the call in
+the logs. A write that may have run (output withheld, timeout) must be called
+out.

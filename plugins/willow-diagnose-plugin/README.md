@@ -50,6 +50,8 @@ bash skills/diagnose-willow/scripts/diagnose.sh --fix    # CLI only, after the u
 - Each skill folder is self-contained (no relative links to a sibling skill's files), so any one of them can be installed alone, including from the trusted skills catalog.
 - Skills are read-only by default. Anything that changes the user's setup (editing a client config, reconnecting or disconnecting a server, signing out, stopping the daemon) is stated and needs the user's go-ahead.
 - Known issues come from Willow's end-user docs (Troubleshooting, FAQ, Refresh Your Tools, MCP Servers, Willow CLI) and the gateway's observed behavior. When those change, update [`known-issues.md`](skills/triage-willow/references/known-issues.md) and the matching skill.
+- The exact texts users see are catalogued per skill: browser sign-in error pages in [`sign-in-errors.md`](skills/triage-willow-auth/references/sign-in-errors.md), tool-call errors in [`error-messages.md`](skills/triage-willow-tool-failures/references/error-messages.md). Both are copied from the gateway and portal source, so update them when those messages change.
+- Each skill folder is self-contained (no links into sibling folders), so it can be imported on its own into Willow's trusted skills catalog.
 
 ## Compatibility
 

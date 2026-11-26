@@ -29,11 +29,11 @@ Every report maps to one rung of this ladder. Find the lowest rung that fails.
 | # | Step | If it fails, the user sees | Skill |
 | --- | --- | --- | --- |
 | 1 | The client has a correct entry: `https://` URL ending in the org's `/mcp`, right `type` | Tools never appear, no error. Cursor ignores an entry without `"type": "http"`. | `triage-willow-client-setup` |
-| 2 | The client can reach the URL | Connection refused, timeout, 404, or the client "connects" to a web page | `triage-willow-client-setup` |
+| 2 | The client can reach the URL from this network | Connection refused, timeout, 404, the client "connects" to a web page, or `403` from the org's IP access filter | `triage-willow-client-setup` |
 | 3 | The gateway answers `401` with an OAuth challenge, and the client fetches the sign-in metadata (`/.well-known/oauth-*`) | "Authorize never completes", nothing opens. **The `401` itself is normal here.** | `triage-willow-auth` |
-| 4 | The user signs in through the browser (Authorize) and the client stores the token | `Unauthorized` loops, `localhost` 404, blocked popup, expired sign-in | `triage-willow-auth` |
-| 5 | `tools/list`: Willow returns what this user may use, enabled, in scope | No tools, a missing server, a stale or too-narrow list | `triage-willow-missing-tools` |
-| 6 | `tools/call`: the user's own connection to that server, approvals and guards | A listed tool fails, is blocked or waits for approval | `triage-willow-tool-failures` |
+| 4 | The user signs in through the browser (Authorize), the org allows this AI client, and the client stores the token | `Unauthorized` loops, `localhost` 404, blocked popup, a Willow error page (**Account Not Found**, **AI Tool Disabled**, **Client Not Approved**, ...) | `triage-willow-auth` |
+| 5 | `tools/list`: Willow returns what this user may use, in this client, in scope, under the org's Default MCP setting | No tools; **only five tools** (`search_tools`, `execute_tool`, ...: Dynamic MCP, which is normal); a missing server; a stale or too-narrow list | `triage-willow-missing-tools` |
+| 6 | `tools/call`: access, the user's own connection to that server, approvals and guards | A listed tool fails, is blocked or waits for approval. Willow's message usually names the fix. | `triage-willow-tool-failures` |
 
 The `willow` CLI is a seventh, separate path with its own daemon:
 `Daemon request timeout` and `willow doctor` failures go to `diagnose-willow`.
@@ -60,9 +60,9 @@ the table: a lower rung can't work until the ones above it do.
 | What the user sees | Skill to use |
 | --- | --- |
 | Client config problem: entry ignored, wrong or `http://` URL, a typo, connection refused, 404, client needs restart or reconnect, Claude Code shows `disconnected` | `triage-willow-client-setup` |
-| `Unauthorized`, `401` that doesn't resolve, Authorize never completes, `localhost` 404 after signing in, popup blocked on **Connect**, a server needing **Re-authenticate** | `triage-willow-auth` |
-| Connected, but "no tools", a server or tool is missing, tool names or `account` choices look old, `Unknown account "<name>"`, only one server's tools appear | `triage-willow-missing-tools` |
-| A tool is listed but the call fails, is blocked, waits on an approval, returns a schema or permission error | `triage-willow-tool-failures` |
+| `Unauthorized`, `401` that doesn't resolve, Authorize never completes, `localhost` 404 after signing in, a Willow error page in the browser, `Access denied: your IP address`, popup blocked on **Connect**, a server needing **Re-authenticate** | `triage-willow-auth` |
+| Connected, but "no tools", only `search_tools` / `execute_tool` and friends, a server or tool is missing, works in one client but not another, the CLI shows more than the client, tool names or `account` choices look old, `Unknown account "<name>"`, only one server's tools appear | `triage-willow-missing-tools` |
+| A tool is listed but the call fails, is blocked, waits on an approval (`Please approve the request at`), returns `You do not have access`, `Sign in to <server>`, a schema or permission error | `triage-willow-tool-failures` |
 | The `willow` CLI hangs, `Daemon request timeout`, `willow doctor` FAILs | `diagnose-willow` |
 | None of the above | Continue at Step 4 and escalate |
 
@@ -94,25 +94,31 @@ Read the probe like this:
 | `404` | Path typo. |
 | Redirect (`301`...) | Often `http://` → `https://`. A client may drop the POST on a redirect; use the final URL. |
 | `000` / timeout / TLS error | DNS, network, VPN, proxy or certificate problem on this machine. |
-| `403`, `429`, `5xx` | Blocked, rate limited or the gateway is failing. Try another network. |
+| `403` + `Access denied: your IP address ...` | The org's IP access filter blocks this network: office network or VPN, or the admin updates the filter. |
+| Other `403`, `429`, `5xx` | Blocked, rate limited or the gateway is failing. Try another network. |
 | Discovery URLs not `200` | A proxy or firewall is blocking sign-in discovery: the usual cause of "Authorize never completes". |
 
 ## Step 3 — Check server-side state with the Willow MCP
 
-If the Willow MCP is connected in this session, use it to see what Willow
-believes about this user. These are read-only lookups.
+If Willow is connected in this session, ask it what it believes about this
+user. Use read-only lookups only.
 
-Don't guess tool names. Search the tool list the client already gives you for
-keywords like `connect`, `server`, `status`, `toolkit`, `usage`, `me`, and read
-a tool's schema before calling it. (If the `willow` CLI happens to be
-installed: `willow tools grep <word>` and `willow tools info <tool>` do the
-same.)
+- **Dynamic MCP tools present** (`search_tools`, `get_mcp_servers`,
+  `get_mcp_tools`, `get_tool_details`, `execute_tool`)? Then
+  `get_mcp_servers` lists exactly the servers this user can reach, and
+  `get_mcp_tools` (with `mcp_slug`) lists one server's tools. These are the
+  most reliable answers you can get from the agent side.
+- **Otherwise** search the client's tool list for similar read-only tools
+  (`server`, `connect`, `status`, `usage`), read a tool's schema before
+  calling it, and don't guess names. With the `willow` CLI installed,
+  `willow tools servers` and `willow tools grep <word>` list the same.
 
 What to look for:
 
 | Question | Where it points |
 | --- | --- |
-| Is the server in the user's list at all? | No → not granted to them. Ask the admin. |
+| Is the server in the user's list at all? | No → not assigned to them, not published, or disabled. Ask the admin. |
+| Does it work in a different AI client? | Yes → the server is limited to certain AI tools, or this client is disabled for the org. Ask the admin. |
 | Is it connected for this user? | No → connection never finished. `triage-willow-auth`. |
 | Is it enabled (not disabled)? | Disabled → the user can enable it. Tools vanish when it is off. |
 | Does it have tools, and how many? | Zero → connection, auth or upstream problem. |

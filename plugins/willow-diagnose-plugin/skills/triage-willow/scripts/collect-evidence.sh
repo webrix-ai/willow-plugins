@@ -186,12 +186,22 @@ probe() {
     404) status="BAD 404: path not found. Typo in the path, or no /mcp." ;;
     301|302|307|308)
       status="WARN redirect to $(grep -i '^location:' "$hdr" | head -1 | tr -d '\r' | cut -d' ' -f2- | sed -E 's/\?.*//'). A client may drop the POST on a redirect: use the final https URL directly." ;;
-    403|429|5??) status="BAD $code: blocked, rate limited or the gateway is erroring. Compare with another network." ;;
+    403)
+      if grep -q "IP access filter" "$body" 2>/dev/null; then
+        status="BAD 403: the org's IP access filter blocks this network. Use the office network or VPN, or ask the admin."
+      else
+        status="BAD 403: refused before sign-in. Compare with another network."
+      fi ;;
+    429|5??) status="BAD $code: rate limited or the gateway is erroring. Retry later or from another network." ;;
     000) status="BAD no response: DNS, network, VPN, proxy or TLS. See the curl error above." ;;
     *) status="??  unexpected status $code" ;;
   esac
   echo "  POST initialize -> $code  $status"
   [ -n "$www" ] && echo "  challenge: $www"
+  if [ "$code" != "401" ] && grep -q '"error_description"' "$body" 2>/dev/null; then
+    # The gateway's own explanation, e.g. the IP filter text. Never a secret.
+    sed -nE 's/.*"error_description"[[:space:]]*:[[:space:]]*"([^"]*)".*/  gateway says: \1/p' "$body" | head -1 | redact
+  fi
 
   # OAuth discovery: what a client fetches after the 401 to learn where to sign
   # in. Once per host, since every URL on a host shares it.
