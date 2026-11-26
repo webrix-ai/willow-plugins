@@ -5,13 +5,13 @@
     "email": "plugins@webrix.ai"
   },
   "metadata": {
-    "description": "Willow agent plugins: diagnostics and tooling for the willow CLI"
+    "description": "Willow agent plugins: diagnostics and triage for Willow MCP connections and the willow CLI"
   },
   "plugins": [
     {
       "name": "willow-diagnose-plugin",
       "source": "willow-diagnose-plugin",
-      "description": "Diagnose and fix willow CLI issues (daemon request timeout, auth, gateway reachability)."
+      "description": "Triage Willow problems for end users: AI clients connected over HTTP MCP (no tools, 401 and sign-in, client setup, failing tool calls) plus the optional willow CLI."
     }
   ]
 }
