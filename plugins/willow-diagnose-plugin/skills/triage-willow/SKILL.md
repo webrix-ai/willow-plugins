@@ -47,10 +47,39 @@ The `willow` CLI is a seventh, separate path with its own daemon:
   and keys), token files, or CLI auth files. Use the bundled evidence script,
   which redacts tokens, JWTs and emails and prints only each Willow entry's
   type and URL.
-- **Ask one question at a time**, and only when the answer changes the next
-  step. Most of what you need is discoverable.
+- **Look before you ask, then ask what only the user knows** (Step 0). Don't
+  ask for anything the evidence script or a Willow lookup can tell you.
 - **Access questions go to the admin.** "Why can't I see X?" or "Why don't I
   have access to Y?" is usually an admin-side permission, not a bug.
+
+## Step 0 — Get what only the user can tell you
+
+Reports usually arrive as "Willow doesn't work". Before classifying, make sure
+you have these. Take what's already in the conversation, and ask for the rest,
+**at most three questions per message**. Use multiple choice if your client
+offers it.
+
+| You need | Why | Ask, if unknown |
+| --- | --- | --- |
+| **Which AI client** (Cursor, Claude Code, Claude Desktop, VS Code, Codex, ChatGPT, the `willow` CLI, ...) | Every fix is per client, and the evidence script only sees local configs | "Which app are you using Willow from?" |
+| **The exact message**, or what they see instead | It usually names the cause (see each skill's catalog) | "Can you paste the exact error, or a screenshot?" |
+| **Which server or tool**, if one | Separates "nothing works" from one server | "Is it everything, or one server or tool? Which one?" |
+| **Ever worked? What changed?** | New setup vs. regression (new laptop, VPN, admin change, update) | "Did this work before? Anything change around then?" |
+| **Works anywhere else?** Another AI client, the Willow portal, a colleague, another network | Narrows it to the client, the user, or the network | "Does it work in another app or for a teammate?" |
+
+Ask only when the answer changes your next step. For example, don't ask about
+the network when the user pasted `You do not have access to this MCP server`:
+the message already says the admin decides. When the user can't answer (no
+error visible, doesn't know the client version), move on with the evidence;
+don't block on it.
+
+**Ask again later when:**
+
+- the evidence shows several Willow entries or orgs: ask which one they use;
+- a fix needs a change (edit a config, sign out, disconnect): confirm first,
+  and say what it does;
+- you're about to escalate: ask when it started and whether they agree to send
+  the report.
 
 ## Step 1 — Classify the symptom
 
@@ -100,33 +129,38 @@ Read the probe like this:
 
 ## Step 3 — Check server-side state with the Willow MCP
 
-If Willow is connected in this session, ask it what it believes about this
-user. Use read-only lookups only.
+If Willow is connected in this session, ask it what it knows about this user
+instead of guessing. Two sources, both answering **for the calling user
+only**:
 
-- **Dynamic MCP tools present** (`search_tools`, `get_mcp_servers`,
-  `get_mcp_tools`, `get_tool_details`, `execute_tool`)? Then
-  `get_mcp_servers` lists exactly the servers this user can reach, and
-  `get_mcp_tools` (with `mcp_slug`) lists one server's tools. These are the
-  most reliable answers you can get from the agent side.
-- **Otherwise** search the client's tool list for similar read-only tools
-  (`server`, `connect`, `status`, `usage`), read a tool's schema before
-  calling it, and don't guess names. With the `willow` CLI installed,
-  `willow tools servers` and `willow tools grep <word>` list the same.
+- **The Willow User MCP** (catalog connector `willow-user`, if the org added
+  it). Its read-only tools are `list_user_mcp_servers`, `check_connection`,
+  `get_auth_url` and `list_user_toolkits`. Schemas, outputs and how to read them
+  are in [references/willow-user-mcp.md](references/willow-user-mcp.md).
+- **Dynamic MCP's own tools**, if the client lists them: `get_mcp_servers` (the
+  servers this user can reach) and `get_mcp_tools` with `mcp_slug` (one
+  server's tools).
+
+The client may show the tool names with a prefix (for example
+`willow-user__check_connection`). With Dynamic MCP, call them through
+`execute_tool` using the Willow User server's slug from `get_mcp_servers`.
+Read each schema before calling. With the `willow` CLI installed,
+`willow tools servers` and `willow tools info <tool>` give the same answers.
 
 What to look for:
 
-| Question | Where it points |
-| --- | --- |
-| Is the server in the user's list at all? | No → not assigned to them, not published, or disabled. Ask the admin. |
-| Does it work in a different AI client? | Yes → the server is limited to certain AI tools, or this client is disabled for the org. Ask the admin. |
-| Is it connected for this user? | No → connection never finished. `triage-willow-auth`. |
-| Is it enabled (not disabled)? | Disabled → the user can enable it. Tools vanish when it is off. |
-| Does it have tools, and how many? | Zero → connection, auth or upstream problem. |
-| Recent calls: success rate, errors, which client? | Shows whether the client reaches Willow at all. |
+| Question | Lookup | Where it points |
+| --- | --- | --- |
+| Is the server available to the user at all? | `list_user_mcp_servers` with `search: "<name>"` (or `get_mcp_servers`) | Missing → not assigned, not published, or disabled. Ask the admin. |
+| Does it have tools? | Same, `include_tools: true` (`tools_count`) | `0` → every tool is disabled, or the server isn't set up. Admin. |
+| Is the user's own sign-in to it done? (OAuth servers only) | `check_connection` with `integration: "<slug>"` | `false` → never connected or expired: `triage-willow-auth` Section B, and `get_auth_url` gives the link. Always `false` for API-key servers, so ignore it there. |
+| May the user connect it? | `get_auth_url` | `403 "MCP server is not available"` → not allowed for this user. Admin. |
+| Is the tool there? | `get_mcp_tools` or `include_tools: true` | Missing → disabled by the admin or removed |
+| Works in a different AI client? | Ask the user | Yes → the server is limited to certain AI tools, or this client is disabled. Admin. |
 
-If no suitable tool exists, say so and ask the user to read the same facts off
-the **MCP Servers** page in Willow (status dot, **Enable**/**Disable**, tool
-count). Don't invent a tool call.
+None of these tools available? Say so, and ask the user to read the same facts
+off the **MCP Servers** page in Willow (status dot, **Connect**,
+**Enable**/**Disable**, tool count). Don't invent a tool call.
 
 ## Step 4 — Escalate with a useful report
 
@@ -148,6 +182,14 @@ Evidence:       <redacted output of collect-evidence.sh>
 
 Rules for the report: exact error text, one issue per report, no tokens, and
 state which steps changed the behavior even slightly.
+
+**Filing it for the user.** If the Willow User MCP has `submit_issue`, offer to
+send the report as a Willow support ticket. It's sent under the user's own name
+and email, so **show the final text and get a yes first**. Send `title` (the
+summary line) and `body_html` (the report, with `<pre>` around the evidence).
+Leave `priority` out: the connector lists `medium`, which the endpoint
+currently rejects. Give the user the returned ticket number. Access problems
+("why can't I see X") go to the org admin, not to Willow support.
 
 ## Quick reference
 

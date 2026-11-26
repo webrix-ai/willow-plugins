@@ -17,6 +17,18 @@ The connection exists, but the tools the user expects aren't there. Work down
 the checks in order and stop at the first one that explains it. All checks are
 read-only until the **Fix** at the end of a step.
 
+**What you need from the user** (ask for what isn't already known, at most
+three at once):
+
+- Which AI client, and which server or tool they expect to see.
+- Did it ever show up? If yes, what changed (admin change, new key, new
+  setup)?
+- Does it show up somewhere else: another AI client, the `willow` CLI, the
+  Willow portal, a colleague?
+
+Don't ask what the lookups in Step 4 can answer, such as whether the server is
+available to them.
+
 ## Step 1 — What exactly does the client list?
 
 Ask the client what Willow tools it has (or look at its MCP panel).
@@ -89,22 +101,33 @@ active), then `willow context use <name>`. Say which context you're moving to.
 
 ## Step 4 — Does Willow make the server available to this user, in this client?
 
-**Look it up rather than guess.** If the session has the Dynamic MCP tools,
-they are read-only lookups of exactly what this user can reach:
+**Look it up rather than guess.** These read-only lookups answer for the
+calling user only:
 
-- `get_mcp_servers` lists every server available to the user (name, slug,
-  description). Missing here = not available to this user.
-- `get_mcp_tools` with `mcp_slug` lists that server's tools. Missing here = the
-  tool doesn't exist or the admin disabled it.
+- **Dynamic MCP:** `get_mcp_servers` lists every server available to the user
+  (name, slug, description); `get_mcp_tools` with `mcp_slug` lists one
+  server's tools.
+- **Willow User MCP** (if the org added it; names may carry a prefix such as
+  `willow-user__`):
+  - `list_user_mcp_servers` with `search: "<name>"` and `include_tools: true`
+    returns `slug`, `status`, `auth_type`, `tools_count` (enabled tools only),
+    the enabled tools, and `connections[].url`, the right URL for that
+    server alone.
+  - `check_connection` with `integration: "<slug>"` returns `true` if the user
+    has an unexpired OAuth sign-in. It's always `false` for API-key servers, so
+    ignore it there.
+  - `list_user_toolkits` lists the toolkits the user can use.
 
-Otherwise look for similar read-only tools in the client's tool list, or ask the
-user to check the **MCP Servers** page in Willow (status dot,
-**Enable**/**Disable**, tool count).
+Missing from these lookups = not available to this user. Present in the lookup
+but missing from the client = a client-side problem (Steps 3, 5 and 6). If
+neither tool set is available, ask the user to check the **MCP Servers** page
+in Willow (status dot, **Connect**, **Enable**/**Disable**, tool count).
 
 | Finding | Meaning | Fix |
 | --- | --- | --- |
 | Server not listed for the user | Not assigned to them, not published yet, or disabled by the admin | Ask the admin. Not a bug. |
-| Listed, not connected (portal) | The user's own connection to it never finished | **Connect** it in Willow (`triage-willow-auth` if that fails) |
+| Listed, not connected (portal, or `check_connection` `false` on an OAuth server) | The user's own sign-in to it never finished or expired | **Connect** it in Willow, or have the user open the link from `get_auth_url` (`triage-willow-auth` if that fails) |
+| Listed with `tools_count: 0` | Every tool is disabled, or the server isn't set up | Admin |
 | Listed, shows **Enable** (portal) | The user turned it off, so its tools vanish immediately | Click **Enable** on the server card |
 | Server listed but one tool missing | The admin disabled that tool, or it was removed | Ask the admin if the user needs it |
 | Works in one AI client but not another | The server is restricted to certain AI tools (its **Allowed AI Tools** setting), or the other client isn't enabled for the org | Use an allowed client, or ask the admin |

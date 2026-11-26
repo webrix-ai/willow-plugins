@@ -36,6 +36,10 @@ Cursor, a blocked tool call), use the `triage-willow` skill instead.
 - **Never print secrets.** Don't run `willow auth token` and don't read
   `~/.config/willow/auth.json`. Debug logs can contain request details: redact
   them (the bundled script does) and have the user read them before sharing.
+- **Ask only what the script can't see**, at most three questions at once:
+  the exact command and its output; whether it hangs every time or only after
+  a while (sleep, network change, an update); and whether they're on a VPN or
+  a corporate network with a proxy.
 
 ## How the daemon works (why this happens)
 

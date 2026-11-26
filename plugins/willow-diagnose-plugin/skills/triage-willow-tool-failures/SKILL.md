@@ -23,6 +23,17 @@ can fix it ("no sign-in can fix it", "A Willow admin needs to ..."). Read the
 message literally and follow it. Don't override it with a generic "try signing
 in again".
 
+**What you need from the user** (ask for what isn't already known, at most
+three at once):
+
+- The **exact** message: paste or screenshot. "It failed" isn't enough; the
+  wording decides everything below.
+- Which tool, on which server, from which AI client.
+- Does it fail every time or sometimes? Does the same call work for a
+  colleague or in another client?
+- For a write (create, update, send, delete): did it maybe happen anyway?
+  Check before anyone retries.
+
 ## Step 1 — Get the exact text and classify it
 
 Copy the full message, not a paraphrase. Then match it against
@@ -74,6 +85,12 @@ them open it. Don't open it for them, and don't paste credentials anywhere.
 | `... could not be authenticated, and no sign-in can fix it ...` | Admin or Willow support. Show no sign-in link. |
 | `Unknown account "<name>"` | Stale tool list: refresh the client (`triage-willow-missing-tools` Step 5), then retry with a key the error lists |
 | `... runs on a Willow Tunnel gateway, and its run service is not connected` | Admin starts the tunnel |
+
+No link in the message, or it expired? If the org added the Willow User MCP,
+`get_auth_url` with `integration: "<server slug>"` returns a fresh sign-in link
+for this user. A `403 "MCP server is not available"` there means the user isn't
+allowed that server. `check_connection` tells you whether an OAuth sign-in is
+stored; it is always `false` for API-key servers.
 
 If the admin changed the server's sign-in method, **Re-authenticate** keeps the
 old one: **Disconnect**, then **Connect** (`triage-willow-auth` Section B).

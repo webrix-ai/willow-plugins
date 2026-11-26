@@ -26,6 +26,15 @@ reason a fix doesn't work.
 If every server fails the same way, it's Client → Willow. If one fails, it's
 Willow → that server.
 
+**What you need from the user** (ask for what isn't already known, at most
+three at once):
+
+- Which AI client, and whether **every** server fails or just one (which one).
+- What happens when they sign in: nothing opens, a browser page with an error
+  (ask for the page title or a screenshot), a `localhost` page, or it seems to
+  work and then fails.
+- Did this work before? Are they on a new network, VPN or laptop?
+
 Never print tokens while diagnosing: don't dump client config or token files,
 and with the CLI don't run `willow auth token` or read `auth.json`.
 
@@ -137,12 +146,20 @@ A **Nothing to Connect** page after **Connect** means the server needs no
 separate sign-in: it uses the Willow sign-in, or none. If its tools still fail,
 look elsewhere (`triage-willow-tool-failures`).
 
-### B3. Confirm with the Willow MCP
+### B3. Confirm with the Willow User MCP
 
-If the Willow MCP is available (search the client's tool list for `connect` or
-`status`, read the schema first, read-only calls only), check whether the
-server shows as connected for this user. A server that's connected in Willow but failing upstream is an
-upstream-side problem: escalate with the exact error and the time.
+If the org added the Willow User MCP (tool names may carry a prefix such as
+`willow-user__`), these answer for the calling user:
+
+| Call | Answer | Meaning |
+| --- | --- | --- |
+| `list_user_mcp_servers` with `search: "<name>"` | The server's `slug` and `auth_type` | Not listed → not available to this user (admin) |
+| `check_connection` with `integration: "<slug>"` | `true` / `false` | OAuth servers only: `false` = never connected or expired. Always `false` for `auth_type: "apiKey"`, so ignore it there. |
+| `get_auth_url` with `integration: "<slug>"` | A sign-in link for this user | Show it to the user to open. `403 "MCP server is not available"` = not allowed for them (admin). |
+
+`check_connection` `true` with calls still failing means the stored sign-in
+exists but was revoked upstream or lacks a permission. Read the tool error
+(`triage-willow-tool-failures`), or escalate with the exact error and the time.
 
 ## Verify and escalate
 

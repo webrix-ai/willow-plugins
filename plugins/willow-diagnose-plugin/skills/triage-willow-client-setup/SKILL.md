@@ -14,6 +14,17 @@ description: >-
 
 Check the URL first; it explains more failures than everything else combined.
 
+**What you need from the user** (ask for what isn't already known, at most
+three at once):
+
+- Which AI client, and whether it runs on this machine. The evidence script
+  only reads local config files; ChatGPT, Claude.ai and other web clients keep
+  their settings in the browser, so ask for a screenshot of the connector
+  settings there.
+- Where the URL came from: **Connect MCP** in their org's portal, a teammate,
+  or a doc.
+- Does it work on another network (without VPN, or on a phone hotspot)?
+
 ## Step 1 — Is the URL right?
 
 The correct URL is the one **Connect MCP** shows for this user's org. Its shape:

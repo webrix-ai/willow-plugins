@@ -51,6 +51,8 @@ bash skills/diagnose-willow/scripts/diagnose.sh --fix    # CLI only, after the u
 - Skills are read-only by default. Anything that changes the user's setup (editing a client config, reconnecting or disconnecting a server, signing out, stopping the daemon) is stated and needs the user's go-ahead.
 - Known issues come from Willow's end-user docs (Troubleshooting, FAQ, Refresh Your Tools, MCP Servers, Willow CLI) and the gateway's observed behavior. When those change, update [`known-issues.md`](skills/triage-willow/references/known-issues.md) and the matching skill.
 - The exact texts users see are catalogued per skill: browser sign-in error pages in [`sign-in-errors.md`](skills/triage-willow-auth/references/sign-in-errors.md), tool-call errors in [`error-messages.md`](skills/triage-willow-tool-failures/references/error-messages.md). Both are copied from the gateway and portal source, so update them when those messages change.
+- Server-side lookups use the Willow User MCP (catalog connector `willow-user`) when the org has added it. Its tool schemas and how to read their answers are in [`willow-user-mcp.md`](skills/triage-willow/references/willow-user-mcp.md); the other skills repeat the few calls they need. Every call is scoped to the calling user. `submit_issue` is the only write, and it's sent only after the user approves the text.
+- Each skill opens with what to ask the user (at most three questions at a time), and only what the evidence script and lookups can't answer.
 - Each skill folder is self-contained (no links into sibling folders), so it can be imported on its own into Willow's trusted skills catalog.
 
 ## Compatibility
