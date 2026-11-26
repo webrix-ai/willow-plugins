@@ -11,7 +11,7 @@
     {
       "name": "willow-diagnose-plugin",
       "source": "willow-diagnose-plugin",
-      "description": "Diagnose and fix willow CLI issues (daemon request timeout, auth, gateway reachability)."
+      "description": "Diagnose and triage Willow problems: CLI issues (daemon timeout, auth, gateway) and known end-user issues (no tools, 401, client setup, failing tool calls)."
     }
   ]
 }

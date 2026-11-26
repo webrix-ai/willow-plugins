@@ -6,7 +6,7 @@ A plugin marketplace for [Willow](https://webrix.ai) that works with Claude Code
 
 | Plugin | Description |
 | ------ | ----------- |
-| [`willow-diagnose-plugin`](plugins/willow-diagnose-plugin) | Diagnose and fix `willow` CLI issues — "Daemon request timeout", auth failures, and gateway reachability. |
+| [`willow-diagnose-plugin`](plugins/willow-diagnose-plugin) | Diagnose and triage Willow problems — `willow` CLI issues ("Daemon request timeout", auth, gateway reachability) and known end-user issues (no tools, 401, client setup, failing tool calls). |
 
 ## Install
 
@@ -36,6 +36,14 @@ willow-plugins/
         diagnose-willow/
           SKILL.md
           scripts/diagnose.sh
+        triage-willow/
+          SKILL.md
+          references/known-issues.md
+          scripts/collect-evidence.sh
+        triage-willow-missing-tools/SKILL.md
+        triage-willow-auth/SKILL.md
+        triage-willow-client-setup/SKILL.md
+        triage-willow-tool-failures/SKILL.md
 ```
 
 ## License
