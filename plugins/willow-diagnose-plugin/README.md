@@ -13,14 +13,15 @@ Diagnose and fix common Willow problems directly from your coding agent: the `wi
 | [`triage-willow-client-setup`](skills/triage-willow-client-setup) | Cursor ignores the entry (`"type": "http"`), Claude Code disconnected, wrong URL, per-client reconnect steps. |
 | [`triage-willow-tool-failures`](skills/triage-willow-tool-failures) | A listed tool fails, is blocked, waits on approval, or returns schema/permission errors. |
 
-`diagnose-willow` ships a re-runnable `diagnose.sh`. `triage-willow` ships `collect-evidence.sh`, which is strictly read-only: it changes nothing, and redacts tokens, JWTs, emails and secret-looking values from everything it prints.
+`diagnose-willow` ships a re-runnable `diagnose.sh`. It is read-only by default; `--fix` (reset the daemon, then test with it off and restore the setting) and `--disable-daemon` are opt-in and meant to be run only after the user agrees. `triage-willow` ships `collect-evidence.sh`, which is strictly read-only: it changes nothing, and redacts tokens, JWTs, emails and secret-looking values from everything it prints.
 
 ## Usage
 
 Ask your agent something like "willow keeps timing out", "I connected Willow but I see no tools", or "I get 401 from Willow" and it will pick the matching skill. You can also run the scripts directly:
 
 ```bash
-bash skills/diagnose-willow/scripts/diagnose.sh
+bash skills/diagnose-willow/scripts/diagnose.sh          # read-only
+bash skills/diagnose-willow/scripts/diagnose.sh --fix    # after the user agrees
 bash skills/triage-willow/scripts/collect-evidence.sh > willow-evidence.txt
 ```
 
